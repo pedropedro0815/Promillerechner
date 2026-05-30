@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1f4d40">
+  <title>Promille Rechner | Pfadfinder Webapp</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="scroll-progress" aria-hidden="true"></div>
+  <div class="bg-noise" aria-hidden="true"></div>
+
+  <header class="app-header">
+    <div class="app-header__inner">
+      <p class="eyebrow">Pfadfinder Webapp</p>
+      <h1>Promille Rechner</h1>
+      <p class="intro">Schätze den Blutalkoholwert mit einem transparenten Modell auf Basis deiner Angaben und der konsumierten Getränke.</p>
+      <p class="disclaimer">Wichtiger Hinweis: Das Ergebnis ist nur eine unverbindliche Schätzung und keine medizinische oder rechtlich belastbare Aussage.</p>
+
+      <div class="preference-toolbar preference-toolbar--header" aria-label="Anzeigeoptionen">
+        <button id="themeModeButton" class="button button--secondary preference-button" type="button" data-action="theme" aria-pressed="false">
+          Design: System
+        </button>
+        <button id="contrastButton" class="button button--secondary preference-button" type="button" data-action="contrast" aria-pressed="false">
+          Kontrast: Normal
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <section class="panel" aria-labelledby="profile-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Eingabe</p>
+          <h2 id="profile-title">Person und Zeit</h2>
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <label class="field">
+          <span>Geschlecht</span>
+          <select id="genderSelect">
+            <option value="male">Männlich</option>
+            <option value="female">Weiblich</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Größe (cm)</span>
+          <input id="heightInput" type="number" min="120" max="230" step="1" value="180">
+        </label>
+
+        <label class="field">
+          <span>Gewicht (kg)</span>
+          <input id="weightInput" type="number" min="35" max="250" step="0.1" value="80">
+        </label>
+
+        <label class="field">
+          <span>Alter</span>
+          <input id="ageInput" type="number" min="14" max="100" step="1" value="30">
+        </label>
+
+        <label class="field">
+          <span>Start Uhrzeit</span>
+          <input id="startTimeInput" type="time" value="20:00">
+        </label>
+
+        <label class="field">
+          <span>Letzter Drink</span>
+          <input id="lastDrinkTimeInput" type="time" value="23:00">
+        </label>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="drink-add-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Getränke</p>
+          <h2 id="drink-add-title">Getränk hinzufügen</h2>
+        </div>
+      </div>
+
+      <div class="drink-builder">
+        <label class="field">
+          <span>Kategorie</span>
+          <select id="categorySelect"></select>
+        </label>
+
+        <label class="field">
+          <span>Typ</span>
+          <select id="drinkSelect"></select>
+        </label>
+
+        <label class="field">
+          <span>Menge pro Getränk</span>
+          <select id="sizeSelect"></select>
+        </label>
+
+        <button id="addDrinkButton" class="plus-button" type="button" aria-label="Getränk hinzufügen">+</button>
+      </div>
+
+      <div id="drinkList" class="drink-list" aria-live="polite"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="result-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Ausgabe</p>
+          <h2 id="result-title">Ergebnis</h2>
+        </div>
+
+        <div class="action-buttons">
+          <button id="copyButton" class="button button--primary" type="button">Ergebnis kopieren</button>
+          <button id="resetButton" class="button button--secondary" type="button">Zurücksetzen</button>
+        </div>
+      </div>
+
+      <div id="statusMessage" class="status-message" role="status" aria-live="polite"></div>
+      <div id="resultOutput" class="result-output"></div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>Promille-Rechner von Andre F.</p>
+  </footer>
+
+  <div class="preference-toolbar preference-toolbar--mobile" aria-label="Anzeigeoptionen mobil">
+    <button id="themeModeButtonMobile" class="button button--secondary preference-button" type="button" data-action="theme" aria-pressed="false">
+      Design: System
+    </button>
+    <button id="contrastButtonMobile" class="button button--secondary preference-button" type="button" data-action="contrast" aria-pressed="false">
+      Kontrast: Normal
+    </button>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
