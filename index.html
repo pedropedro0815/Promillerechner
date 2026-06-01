@@ -39,6 +39,15 @@
       </div>
 
       <div class="form-grid">
+        <label class="field time-mode-field">
+          <span>Zeitmodus</span>
+          <select id="timeModeSelect">
+            <option value="manual">Manuell</option>
+            <option value="live">Live</option>
+          </select>
+          <small class="field-hint">Live nutzt den Zeitpunkt jedes hinzugefügten Getränks.</small>
+        </label>
+
         <label class="field">
           <span>Geschlecht</span>
           <select id="genderSelect">
@@ -62,12 +71,12 @@
           <input id="ageInput" type="number" min="14" max="100" step="1" value="30">
         </label>
 
-        <label class="field">
+        <label id="startTimeField" class="field">
           <span>Start Uhrzeit</span>
           <input id="startTimeInput" type="time" value="20:00">
         </label>
 
-        <label class="field">
+        <label id="lastDrinkTimeField" class="field">
           <span>Letzter Drink</span>
           <input id="lastDrinkTimeInput" type="time" value="23:00">
         </label>

@@ -51,8 +51,11 @@ const genderSelectEl = document.querySelector("#genderSelect");
 const heightInputEl = document.querySelector("#heightInput");
 const weightInputEl = document.querySelector("#weightInput");
 const ageInputEl = document.querySelector("#ageInput");
+const timeModeSelectEl = document.querySelector("#timeModeSelect");
 const startTimeInputEl = document.querySelector("#startTimeInput");
 const lastDrinkTimeInputEl = document.querySelector("#lastDrinkTimeInput");
+const startTimeFieldEl = document.querySelector("#startTimeField");
+const lastDrinkTimeFieldEl = document.querySelector("#lastDrinkTimeField");
 const categorySelectEl = document.querySelector("#categorySelect");
 const drinkSelectEl = document.querySelector("#drinkSelect");
 const sizeSelectEl = document.querySelector("#sizeSelect");
@@ -76,6 +79,7 @@ function init() {
   hydrateCategorySelect();
   restoreState();
   hydrateProfileInputs();
+  applyTimeModeVisibility();
   hydrateDrinkDependentSelects();
   renderDrinkList();
   renderResult();
@@ -95,6 +99,13 @@ function init() {
     state.builder.sizeLiters = Number(sizeSelectEl.value);
     persistState();
   });
+
+  if (timeModeSelectEl) {
+    timeModeSelectEl.addEventListener("change", handleTimeModeChange);
+  } else {
+    console.warn("Zeitmodus-Auswahl wurde nicht gefunden.");
+    showStatus("Hinweis: Zeitmodus-Auswahl fehlt in dieser Ansicht.");
+  }
 
   addDrinkButtonEl.addEventListener("click", addSelectedDrink);
   copyButtonEl.addEventListener("click", copyResult);
@@ -116,6 +127,10 @@ function init() {
     lastDrinkTimeInputEl
   ];
 
+  if (timeModeSelectEl) {
+    profileInputs.unshift(timeModeSelectEl);
+  }
+
   profileInputs.forEach((input) => {
     input.addEventListener("input", updateProfileFromForm);
     input.addEventListener("change", updateProfileFromForm);
@@ -134,6 +149,7 @@ function init() {
 function createInitialState() {
   return {
     profile: {
+      timeMode: "manual",
       gender: "male",
       heightCm: 180,
       weightKg: 80,
@@ -209,6 +225,9 @@ function hydrateDrinkDependentSelects() {
 }
 
 function updateProfileFromForm() {
+  if (timeModeSelectEl) {
+    state.profile.timeMode = timeModeSelectEl.value === "live" ? "live" : "manual";
+  }
   state.profile.gender = genderSelectEl.value;
   state.profile.heightCm = toNumber(heightInputEl.value, 180);
   state.profile.weightKg = toNumber(weightInputEl.value, 80);
@@ -216,11 +235,16 @@ function updateProfileFromForm() {
   state.profile.startTime = startTimeInputEl.value || "20:00";
   state.profile.lastDrinkTime = lastDrinkTimeInputEl.value || "23:00";
 
+  applyTimeModeVisibility();
   persistState();
+  renderDrinkList();
   renderResult();
 }
 
 function hydrateProfileInputs() {
+  if (timeModeSelectEl) {
+    timeModeSelectEl.value = state.profile.timeMode;
+  }
   genderSelectEl.value = state.profile.gender;
   heightInputEl.value = String(state.profile.heightCm);
   weightInputEl.value = String(state.profile.weightKg);
@@ -230,12 +254,143 @@ function hydrateProfileInputs() {
   categorySelectEl.value = state.builder.category;
 }
 
+function applyTimeModeVisibility() {
+  const isLiveMode = state.profile.timeMode === "live";
+
+  if (startTimeFieldEl && startTimeInputEl) {
+    startTimeFieldEl.classList.toggle("is-hidden", isLiveMode);
+    startTimeInputEl.disabled = isLiveMode;
+  }
+
+  if (lastDrinkTimeFieldEl && lastDrinkTimeInputEl) {
+    lastDrinkTimeFieldEl.classList.toggle("is-hidden", isLiveMode);
+    lastDrinkTimeInputEl.disabled = isLiveMode;
+  }
+}
+
+function handleTimeModeChange() {
+  if (!timeModeSelectEl) {
+    return;
+  }
+
+  const nextMode = timeModeSelectEl.value === "live" ? "live" : "manual";
+
+  if (nextMode === state.profile.timeMode) {
+    applyTimeModeVisibility();
+    return;
+  }
+
+  if (nextMode === "live") {
+    convertManualDrinksToLive();
+  } else {
+    convertLiveDrinksToManual();
+  }
+
+  state.profile.timeMode = nextMode;
+  applyTimeModeVisibility();
+  persistState();
+  renderDrinkList();
+  renderResult();
+}
+
+function convertManualDrinksToLive() {
+  const expanded = [];
+
+  for (const entry of state.drinks) {
+    if (Number.isFinite(entry.timestampMs)) {
+      expanded.push({ ...entry, count: 1 });
+      continue;
+    }
+
+    const count = Math.max(1, Math.floor(toNumber(entry.count, 1)));
+    for (let i = 0; i < count; i += 1) {
+      expanded.push({
+        id: crypto.randomUUID(),
+        category: entry.category,
+        drink: entry.drink,
+        sizeLiters: entry.sizeLiters,
+        count: 1
+      });
+    }
+  }
+
+  if (expanded.length === 0) {
+    state.drinks = [];
+    return;
+  }
+
+  const timeline = normalizeTimeline(
+    state.profile.startTime,
+    state.profile.lastDrinkTime,
+    state.profile.lastDrinkTime
+  );
+
+  const total = expanded.length;
+  const span = Math.max(0, timeline.endMin - timeline.startMin);
+  const step = total > 1 ? span / (total - 1) : 0;
+  const baseDate = getTodayMidnight();
+
+  state.drinks = expanded.map((entry, index) => {
+    const totalMinutes = timeline.startMin + (step * index);
+    const timestampMs = baseDate.getTime() + (totalMinutes * 60 * 1000);
+
+    return {
+      id: entry.id,
+      category: entry.category,
+      drink: entry.drink,
+      sizeLiters: entry.sizeLiters,
+      count: 1,
+      timestampMs
+    };
+  });
+}
+
+function convertLiveDrinksToManual() {
+  const grouped = new Map();
+
+  for (const entry of state.drinks) {
+    const key = `${entry.category}|${entry.drink}|${entry.sizeLiters}`;
+    const existing = grouped.get(key);
+
+    if (existing) {
+      existing.count += 1;
+      continue;
+    }
+
+    grouped.set(key, {
+      id: crypto.randomUUID(),
+      category: entry.category,
+      drink: entry.drink,
+      sizeLiters: entry.sizeLiters,
+      count: 1
+    });
+  }
+
+  state.drinks = Array.from(grouped.values());
+}
+
 function addSelectedDrink() {
   const { category, drink, sizeLiters } = state.builder;
   const categoryMeta = drinkCatalog[category];
 
   if (!categoryMeta || !categoryMeta.drinks[drink]) {
     showStatus("Getränk konnte nicht hinzugefügt werden.");
+    return;
+  }
+
+  if (state.profile.timeMode === "live") {
+    state.drinks.push({
+      id: crypto.randomUUID(),
+      category,
+      drink,
+      sizeLiters,
+      count: 1,
+      timestampMs: Date.now()
+    });
+
+    persistState();
+    renderDrinkList();
+    renderResult();
     return;
   }
 
@@ -273,7 +428,12 @@ function renderDrinkList() {
     return;
   }
 
-  for (const entry of state.drinks) {
+  const isLiveMode = state.profile.timeMode === "live";
+  const entries = isLiveMode
+    ? [...state.drinks].sort((a, b) => toNumber(a.timestampMs, 0) - toNumber(b.timestampMs, 0))
+    : state.drinks;
+
+  for (const entry of entries) {
     const category = drinkCatalog[entry.category];
     const drink = category.drinks[entry.drink];
     const card = document.createElement("article");
@@ -287,9 +447,25 @@ function renderDrinkList() {
 
     const meta = document.createElement("p");
     meta.className = "drink-item__meta";
-    meta.textContent = `${formatLiters(entry.sizeLiters)} pro Getränk • ${formatPercent(drink.abv)}`;
+    if (isLiveMode) {
+      meta.textContent = `${formatLiters(entry.sizeLiters)} • ${formatPercent(drink.abv)} • eingetragen um ${formatClockFromTimestamp(entry.timestampMs)}`;
+    } else {
+      meta.textContent = `${formatLiters(entry.sizeLiters)} pro Getränk • ${formatPercent(drink.abv)}`;
+    }
 
     head.append(title, meta);
+
+    if (isLiveMode) {
+      const removeButton = document.createElement("button");
+      removeButton.className = "button button--secondary drink-item__remove";
+      removeButton.type = "button";
+      removeButton.textContent = "Entfernen";
+      removeButton.addEventListener("click", () => removeDrinkEntry(entry.id));
+
+      card.append(head, removeButton);
+      drinkListEl.append(card);
+      continue;
+    }
 
     const counter = document.createElement("div");
     counter.className = "counter";
@@ -320,6 +496,10 @@ function renderDrinkList() {
 }
 
 function updateDrinkCount(entryId, delta) {
+  if (state.profile.timeMode === "live") {
+    return;
+  }
+
   const entry = state.drinks.find((item) => item.id === entryId);
 
   if (!entry) {
@@ -332,6 +512,13 @@ function updateDrinkCount(entryId, delta) {
     state.drinks = state.drinks.filter((item) => item.id !== entryId);
   }
 
+  persistState();
+  renderDrinkList();
+  renderResult();
+}
+
+function removeDrinkEntry(entryId) {
+  state.drinks = state.drinks.filter((item) => item.id !== entryId);
   persistState();
   renderDrinkList();
   renderResult();
@@ -356,7 +543,7 @@ function renderResult() {
 
   const resultNote = document.createElement("p");
   resultNote.className = "result-note";
-  resultNote.textContent = "Schätzung zum gewählten Berechnungszeitpunkt. Werte können je nach Stoffwechsel und Situation deutlich abweichen.";
+  resultNote.textContent = `Zeitmodus: ${calculation.modeLabel}. ${calculation.timelineLabel}. Werte können je nach Stoffwechsel und Situation deutlich abweichen.`;
 
   resultCard.append(promilleValue, warningPill, resultNote);
 
@@ -368,7 +555,7 @@ function renderResult() {
       <li>Reiner Alkohol gesamt: ${formatNumber(calculation.totalAlcoholGrams, 1)} g</li>
       <li>Personalisierter Verteilungsfaktor (r): ${formatNumber(calculation.rFactor, 3)}</li>
       <li>Trinkdauer: ${formatNumber(calculation.drinkDurationHours, 2)} h</li>
-      <li>Abbauzeit seit letztem Drink: ${formatNumber(calculation.eliminationHours, 2)} h</li>
+      <li>${calculation.eliminationLabel}: ${formatNumber(calculation.eliminationHours, 2)} h</li>
       <li>Abzug durch Abbau: ${formatNumber(calculation.eliminationPromille, 2)} ‰</li>
       <li>Alkohol vollständig abgebaut um: ${calculation.clearanceTime}</li>
     </ul>
@@ -400,7 +587,14 @@ function renderResult() {
 }
 
 function calculatePromille() {
-  // Automatically use lastDrinkTime as the calculation endpoint
+  if (state.profile.timeMode === "live") {
+    return calculateLivePromille();
+  }
+
+  return calculateManualPromille();
+}
+
+function calculateManualPromille() {
   const normalizedTimeline = normalizeTimeline(
     state.profile.startTime,
     state.profile.lastDrinkTime,
@@ -433,13 +627,16 @@ function calculatePromille() {
   const eliminationPromille = eliminationHours * ELIMINATION_PER_HOUR;
   const promille = Math.max(0, rawPromille - eliminationPromille);
 
-  const clearanceTime = calculateAlcoholClearanceTime(state.profile.lastDrinkTime, promille);
+  const clearanceTime = calculateAlcoholClearanceFromTime(state.profile.lastDrinkTime, promille);
 
   return {
+    modeLabel: "Manuell",
+    timelineLabel: `Zeitraum ${state.profile.startTime} bis ${state.profile.lastDrinkTime}`,
     promille,
     rFactor,
     totalAlcoholGrams,
     eliminationHours,
+    eliminationLabel: "Abbauzeit seit letztem Drink",
     eliminationPromille,
     drinkDurationHours: (normalizedTimeline.endMin - normalizedTimeline.startMin) / 60,
     drinkSummary,
@@ -447,15 +644,94 @@ function calculatePromille() {
   };
 }
 
-function calculateAlcoholClearanceTime(lastDrinkTimeStr, promille) {
+function calculateLivePromille() {
+  const liveEntries = state.drinks.filter((entry) => Number.isFinite(entry.timestampMs));
+  const rFactor = getPersonalizedRFactor(
+    state.profile.gender,
+    state.profile.age,
+    state.profile.heightCm,
+    state.profile.weightKg
+  );
+
+  if (liveEntries.length === 0) {
+    return {
+      modeLabel: "Live",
+      timelineLabel: "Zeitraum noch offen (keine Live-Einträge)",
+      promille: 0,
+      rFactor,
+      totalAlcoholGrams: 0,
+      eliminationHours: 0,
+      eliminationLabel: "Abbauzeit seit erstem Drink",
+      eliminationPromille: 0,
+      drinkDurationHours: 0,
+      drinkSummary: [],
+      clearanceTime: "--:--"
+    };
+  }
+
+  const sortedEntries = [...liveEntries].sort((a, b) => a.timestampMs - b.timestampMs);
+  const startMs = sortedEntries[0].timestampMs;
+  const endMs = sortedEntries[sortedEntries.length - 1].timestampMs;
+
+  const drinkSummary = [];
+  let totalAlcoholGrams = 0;
+  let rawPromilleSum = 0;
+  let remainingPromilleSum = 0;
+
+  for (const entry of sortedEntries) {
+    const category = drinkCatalog[entry.category];
+    const drinkMeta = category.drinks[entry.drink];
+    const pureAlcohol = getPureAlcoholGrams(entry.sizeLiters, drinkMeta.abv, 1);
+    const rawPromille = pureAlcohol / (state.profile.weightKg * rFactor);
+    const eliminationHours = Math.max(0, endMs - entry.timestampMs) / 3600000;
+    const remainingPromille = Math.max(0, rawPromille - (eliminationHours * ELIMINATION_PER_HOUR));
+
+    totalAlcoholGrams += pureAlcohol;
+    rawPromilleSum += rawPromille;
+    remainingPromilleSum += remainingPromille;
+    drinkSummary.push(
+      `${drinkMeta.label} (${formatLiters(entry.sizeLiters)}, ${formatPercent(drinkMeta.abv)}) um ${formatClockFromTimestamp(entry.timestampMs)}`
+    );
+  }
+
+  const drinkDurationHours = Math.max(0, endMs - startMs) / 3600000;
+  const eliminationPromille = Math.max(0, rawPromilleSum - remainingPromilleSum);
+
+  return {
+    modeLabel: "Live",
+    timelineLabel: `Zeitraum ${formatClockFromTimestamp(startMs)} bis ${formatClockFromTimestamp(endMs)}`,
+    promille: remainingPromilleSum,
+    rFactor,
+    totalAlcoholGrams,
+    eliminationHours: drinkDurationHours,
+    eliminationLabel: "Abbauzeit seit erstem Drink",
+    eliminationPromille,
+    drinkDurationHours,
+    drinkSummary,
+    clearanceTime: calculateAlcoholClearanceFromTimestamp(endMs, remainingPromilleSum)
+  };
+}
+
+function calculateAlcoholClearanceFromTime(baseTimeStr, promille) {
   const hoursUntilClear = promille / ELIMINATION_PER_HOUR;
-  const lastDrinkMin = toMinutes(lastDrinkTimeStr, 23 * 60);
-  const clearanceMin = lastDrinkMin + hoursUntilClear * 60;
-  const minutesPerDay = 1440;
-  const normalizedMin = clearanceMin % minutesPerDay;
+  const baseMinutes = toMinutes(baseTimeStr, 23 * 60);
+  const totalMinutes = baseMinutes + (hoursUntilClear * 60);
+  const dayOffset = Math.floor(totalMinutes / 1440);
+  const normalizedMin = ((totalMinutes % 1440) + 1440) % 1440;
   const hours = Math.floor(normalizedMin / 60);
   const minutes = Math.round(normalizedMin % 60);
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  const suffix = dayOffset > 0 ? ` (+${dayOffset}d)` : "";
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}${suffix}`;
+}
+
+function calculateAlcoholClearanceFromTimestamp(baseTimestampMs, promille) {
+  const hoursUntilClear = promille / ELIMINATION_PER_HOUR;
+  const clearanceTimestamp = baseTimestampMs + (hoursUntilClear * 3600000);
+  const clearanceDate = new Date(clearanceTimestamp);
+  const baseDate = new Date(baseTimestampMs);
+  const dayOffset = Math.floor((startOfDay(clearanceDate).getTime() - startOfDay(baseDate).getTime()) / 86400000);
+  const suffix = dayOffset > 0 ? ` (+${dayOffset}d)` : "";
+  return `${String(clearanceDate.getHours()).padStart(2, "0")}:${String(clearanceDate.getMinutes()).padStart(2, "0")}${suffix}`;
 }
 
 function normalizeTimeline(startTime, lastDrinkTime, endTime) {
@@ -522,10 +798,13 @@ async function copyResult() {
   const calculation = calculatePromille();
   const lines = [
     "Promille-Rechner (Schätzung)",
+    `Zeitmodus: ${calculation.modeLabel}`,
+    calculation.timelineLabel,
     `Ergebnis: ${formatPromille(calculation.promille)} ‰`,
     `Reiner Alkohol gesamt: ${formatNumber(calculation.totalAlcoholGrams, 1)} g`,
     `Verteilungsfaktor (r): ${formatNumber(calculation.rFactor, 3)}`,
-    `Abbauzeit seit letztem Drink: ${formatNumber(calculation.eliminationHours, 2)} h`,
+    `${calculation.eliminationLabel}: ${formatNumber(calculation.eliminationHours, 2)} h`,
+    `Abbauzeitpunkt 0 ‰: ${calculation.clearanceTime}`,
     "Getränke:",
     ...calculation.drinkSummary.map((line) => `- ${line}`),
     "Hinweis: Nur unverbindliche Schätzung."
@@ -578,6 +857,7 @@ function resetAll() {
   state.drinks = freshState.drinks;
 
   hydrateProfileInputs();
+  applyTimeModeVisibility();
   hydrateDrinkDependentSelects();
   renderDrinkList();
   renderResult();
@@ -594,13 +874,13 @@ function restoreState() {
     }
 
     if (saved.profile && typeof saved.profile === "object") {
+      state.profile.timeMode = saved.profile.timeMode === "live" ? "live" : "manual";
       state.profile.gender = saved.profile.gender === "female" ? "female" : "male";
       state.profile.heightCm = toNumber(saved.profile.heightCm, state.profile.heightCm);
       state.profile.weightKg = toNumber(saved.profile.weightKg, state.profile.weightKg);
       state.profile.age = toNumber(saved.profile.age, state.profile.age);
       state.profile.startTime = sanitizeTime(saved.profile.startTime, state.profile.startTime);
       state.profile.lastDrinkTime = sanitizeTime(saved.profile.lastDrinkTime, state.profile.lastDrinkTime);
-      state.profile.endTime = sanitizeTime(saved.profile.endTime, state.profile.endTime);
     }
 
     if (saved.builder && typeof saved.builder === "object") {
@@ -632,13 +912,16 @@ function sanitizeDrinkEntry(entry) {
 
   const sizeLiters = toNumber(entry.sizeLiters, category.sizeOptions[0].value);
   const count = Math.max(1, Math.floor(toNumber(entry.count, 1)));
+  const parsedTimestampMs = Number(entry.timestampMs);
+  const timestampMs = Number.isFinite(parsedTimestampMs) ? parsedTimestampMs : null;
 
   return {
     id: typeof entry.id === "string" ? entry.id : crypto.randomUUID(),
     category: entry.category,
     drink: entry.drink,
     sizeLiters,
-    count
+    count,
+    timestampMs
   };
 }
 
@@ -769,6 +1052,26 @@ function showStatus(message) {
   showStatus.timeoutId = window.setTimeout(() => {
     statusMessageEl.textContent = "";
   }, 2500);
+}
+
+function getTodayMidnight() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+}
+
+function startOfDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+}
+
+function formatClockFromTimestamp(timestampMs) {
+  if (!Number.isFinite(timestampMs)) {
+    return "--:--";
+  }
+
+  const date = new Date(timestampMs);
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
 }
 
 function toMinutes(timeValue, fallbackMinutes) {
