@@ -41,6 +41,18 @@ const drinkCatalog = {
       bitter: { label: "Bitterlikör", abv: 25 },
       nuss: { label: "Nusslikör", abv: 22 }
     }
+  },
+  wein: {
+    label: "Wein",
+    sizeOptions: [
+      { value: 0.125, label: "125 ml" },
+      { value: 0.2, label: "200 ml" }
+    ],
+    drinks: {
+      lieblich: { label: "Lieblich", abv: 10.5 },
+      trocken: { label: "Trocken", abv: 12 },
+      rot: { label: "Rot", abv: 14 }
+    }
   }
 };
 
@@ -108,7 +120,7 @@ function init() {
   }
 
   addDrinkButtonEl.addEventListener("click", addSelectedDrink);
-  copyButtonEl.addEventListener("click", copyResult);
+  copyButtonEl.addEventListener("click", handlePrimaryExportAction);
   resetButtonEl.addEventListener("click", resetAll);
 
   themeModeButtonEls.forEach((button) => {
@@ -138,6 +150,10 @@ function init() {
 
   window.addEventListener("scroll", updateScrollProgress, { passive: true });
   updateScrollProgress();
+  updateExportButton();
+
+  window.addEventListener("resize", updateExportButton, { passive: true });
+  window.addEventListener("orientationchange", updateExportButton);
 
   prefersDarkQuery.addEventListener("change", () => {
     if (preferences.themeMode === "system") {
@@ -794,7 +810,7 @@ function getWarningLevel(promille) {
   };
 }
 
-async function copyResult() {
+function createResultText() {
   const calculation = calculatePromille();
   const lines = [
     "Promille-Rechner (Schätzung)",
@@ -810,20 +826,102 @@ async function copyResult() {
     "Hinweis: Nur unverbindliche Schätzung."
   ];
 
-  const text = lines.join("\n");
+  return lines.join("\n");
+}
+
+function hasResultData() {
+  return state.drinks.length > 0;
+}
+
+function isLikelyMobileDevice() {
+  const matchesMobileAgent = /Android|iPhone|iPad|iPod|Windows Phone|Mobile/i.test(navigator.userAgent);
+  const hasCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
+  return matchesMobileAgent || hasCoarsePointer;
+}
+
+function canUseWebShareForText() {
+  return window.isSecureContext && typeof navigator.share === "function";
+}
+
+function shouldPreferNativeShare() {
+  return isLikelyMobileDevice() && canUseWebShareForText();
+}
+
+function updateExportButton() {
+  copyButtonEl.textContent = shouldPreferNativeShare()
+    ? "Ergebnis teilen"
+    : "Ergebnis kopieren";
+}
+
+async function handlePrimaryExportAction() {
+  if (!hasResultData()) {
+    showStatus("Keine Getränke vorhanden.");
+    return;
+  }
+
+  const text = createResultText();
+  copyButtonEl.disabled = true;
+  copyButtonEl.setAttribute("aria-busy", "true");
 
   try {
-    await navigator.clipboard.writeText(text);
-    showStatus("Ergebnis wurde kopiert.");
-  } catch (error) {
-    const copied = copyTextFallback(text);
-    if (copied) {
-      showStatus("Ergebnis wurde kopiert (Fallback).");
-      return;
+    if (shouldPreferNativeShare()) {
+      try {
+        await navigator.share({
+          title: "Promille-Rechner Ergebnis",
+          text
+        });
+        showStatus("Ergebnis wurde geteilt.");
+        return;
+      } catch (error) {
+        const copiedAfterShareError = await copyResultToClipboard(text, {
+          successMessage: "Teilen abgebrochen. Ergebnis wurde kopiert.",
+          fallbackMessage: "Teilen nicht möglich. Ergebnis wurde kopiert (Fallback).",
+          manualMessage: "Teilen nicht möglich. Bitte manuell markieren und kopieren."
+        });
+
+        if (!copiedAfterShareError) {
+          console.warn("Teilen und Kopieren sind fehlgeschlagen.", error);
+        }
+
+        return;
+      }
     }
 
-    showStatus("Kopieren nicht möglich. Bitte manuell markieren.");
-    console.warn("Kopieren fehlgeschlagen.", error);
+    await copyResultToClipboard(text, {
+      successMessage: "Ergebnis wurde kopiert.",
+      fallbackMessage: "Ergebnis wurde kopiert (Fallback).",
+      manualMessage: "Kopieren nicht möglich. Bitte manuell markieren."
+    });
+  } finally {
+    copyButtonEl.disabled = false;
+    copyButtonEl.setAttribute("aria-busy", "false");
+  }
+}
+
+async function copyResultToClipboard(text, options = {}) {
+  const successMessage = options.successMessage ?? "Ergebnis wurde kopiert.";
+  const fallbackMessage = options.fallbackMessage ?? "Ergebnis wurde kopiert (Fallback).";
+  const manualMessage = options.manualMessage ?? "Kopieren nicht möglich. Bitte manuell markieren.";
+
+  try {
+    if (!navigator.clipboard?.writeText) {
+      throw new Error("Clipboard API nicht verfügbar");
+    }
+
+    await navigator.clipboard.writeText(text);
+    showStatus(successMessage);
+    return true;
+  } catch (error) {
+    console.warn("Zwischenablage nicht verfügbar, Fallback wird genutzt.", error);
+    const copied = copyTextFallback(text);
+
+    if (copied) {
+      showStatus(fallbackMessage);
+      return true;
+    }
+
+    showStatus(manualMessage);
+    return false;
   }
 }
 

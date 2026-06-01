@@ -75,16 +75,28 @@ body {
 }
 
 .app-header {
-  padding: 12px 0 8px;
+  padding: 10px 0 8px;
 }
 
 .app-header__inner {
-  padding: 16px;
+  position: relative;
+  padding: 11px 138px 11px 12px;
   border: 1px solid rgba(255, 255, 255, 0.45);
   border-radius: var(--radius-xl);
   background: linear-gradient(180deg, rgba(255, 252, 246, 0.9) 0%, rgba(241, 229, 201, 0.76) 100%);
   backdrop-filter: blur(10px);
   box-shadow: var(--shadow-deep);
+}
+
+.header-logo {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  height: 98px;
+  width: auto;
+  max-width: 216px;
+  object-fit: contain;
+  z-index: 2;
 }
 
 .eyebrow {
@@ -439,6 +451,19 @@ input:focus-visible {
   content: "";
 }
 
+@media (max-width: 760px) {
+  .app-header__inner {
+    padding-right: 116px;
+  }
+
+  .header-logo {
+    top: 10px;
+    right: 10px;
+    height: 80px;
+    max-width: 174px;
+  }
+}
+
 @media (max-width: 679px) {
   body {
     padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
@@ -555,10 +580,25 @@ input:focus-visible {
 }
 
 @media (hover: hover) and (pointer: fine) {
+  .app-header__inner {
+    transition: border-color 220ms ease, box-shadow 220ms ease;
+  }
+
+  .panel {
+    transition: border-color 220ms ease, box-shadow 220ms ease;
+  }
+
   .button,
   .plus-button,
   .counter__button {
     transition: transform 140ms ease, filter 180ms ease, box-shadow 180ms ease;
+  }
+
+  .panel:hover,
+  :root[data-theme="dark"] .app-header__inner:hover,
+  :root[data-theme="dark"][data-contrast="high"] .app-header__inner:hover {
+    border-color: rgba(31, 77, 64, 0.36);
+    box-shadow: 0 16px 34px rgba(34, 46, 38, 0.14);
   }
 
   .button:hover,
@@ -571,6 +611,8 @@ input:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .app-header__inner,
+  .panel,
   .button,
   .plus-button,
   .counter__button {
